@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">PGSharp-Helper</string>
+    <string name="version_format">%1$s&lt;small>(%2$d)&lt;/small></string>
+</resources>

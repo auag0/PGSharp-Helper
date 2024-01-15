@@ -1,0 +1,207 @@
+package com.azarasi.pgsharphelper.utils
+
+import android.content.SharedPreferences
+import com.topjohnwu.superuser.io.SuFile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+class `SharedPrefs.fffffffffffff`(
+    private val mFile: SuFile
+) : SharedPreferences {
+    private val mLock = Object()
+    private var mMap: Map<String, Any?> = emptyMap()
+    private val scope = CoroutineScope(Dispatchers.IO)
+    private var mLoaded = false
+
+    init {
+        mMap = emptyMap()
+        startLoadFromDisk()
+    }
+
+    private fun awaitLoadedLocked() {
+        while (!mLoaded) {
+            try {
+                mLock.wait()
+            } catch (_: InterruptedException) {
+            }
+        }
+    }
+
+    private fun startLoadFromDisk() {
+        synchronized(mLock) {
+            if (mLoaded) {
+                return
+            }
+        }
+        scope.launch {
+            val xmlText = mFile.newInputStream().bufferedReader().readText()
+            mMap = SPParser.parseXmlText(xmlText)
+        }
+        synchronized(mLock) {
+            mLoaded = true
+            mLock.notifyAll()
+        }
+    }
+
+    override fun getAll(): Map<String, Any?> {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return mMap
+        }
+    }
+
+    override fun getString(key: String, defValue: String?): String? {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return (mMap[key] as? String?) ?: defValue
+        }
+    }
+
+    override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return (mMap[key] as? Set<String>?) ?: defValues
+        }
+    }
+
+    override fun getInt(key: String, defValue: Int): Int {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return (mMap[key] as? Int?) ?: defValue
+        }
+    }
+
+    override fun getLong(key: String, defValue: Long): Long {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return (mMap[key] as? Long?) ?: defValue
+        }
+    }
+
+    override fun getFloat(key: String, defValue: Float): Float {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return (mMap[key] as? Float?) ?: defValue
+        }
+    }
+
+    override fun getBoolean(key: String, defValue: Boolean): Boolean {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return (mMap[key] as? Boolean?) ?: defValue
+        }
+    }
+
+    override fun contains(key: String): Boolean {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return mMap.containsKey(key)
+        }
+    }
+
+    override fun edit(): SharedPreferences.Editor {
+        synchronized(mLock) {
+            awaitLoadedLocked()
+            return Editor()
+        }
+    }
+
+    override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {
+        TODO("not supported")
+    }
+
+    override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {
+        TODO("not supported")
+    }
+
+    inner class Editor : SharedPreferences.Editor {
+        private val mEditorLock = Object()
+        private val mModified: MutableMap<String, Any?> = mMap.toMutableMap()
+
+        override fun putString(key: String, value: String?): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified[key] = value ?: "null"
+                return this
+            }
+        }
+
+        override fun putStringSet(
+            key: String,
+            values: Set<String>?
+        ): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified[key] = values ?: emptySet<String>()
+                return this
+            }
+        }
+
+        override fun putInt(key: String, value: Int): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified[key] = value
+                return this
+            }
+        }
+
+        override fun putLong(key: String, value: Long): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified[key] = value
+                return this
+            }
+        }
+
+        override fun putFloat(key: String, value: Float): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified[key] = value
+                return this
+            }
+        }
+
+        override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified[key] = value
+                return this
+            }
+        }
+
+        override fun remove(key: String): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified.remove(key)
+                return this
+            }
+        }
+
+        override fun clear(): SharedPreferences.Editor {
+            synchronized(mEditorLock) {
+                mModified.clear()
+                return this
+            }
+        }
+
+        override fun commit(): Boolean {
+            return try {
+                mFile.newOutputStream().bufferedWriter().use { writer ->
+                    val newXmlText = SPParser.createXmlText(mModified)
+                    writer.write(newXmlText)
+                }
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
+
+        override fun apply() {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    mFile.newOutputStream().bufferedWriter().use { writer ->
+                        val newXmlText = SPParser.createXmlText(mModified)
+                        writer.write(newXmlText)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+}
